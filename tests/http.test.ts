@@ -181,6 +181,25 @@ describe('réponses', () => {
     await app.close();
   });
 
+  it('un jeu lancé par `lancer` élargit aussi la politique (option csp)', async () => {
+    const socle = await demarrerJeu(jeuFactice, {
+      env: { DB_PATH: ':memory:' },
+      transport: new TransportSimule(),
+      logger: { info: () => {}, warn: () => {} },
+      ecouter: false,
+      ticMs: null,
+      csp: { 'img-src': ['https://upload.wikimedia.org'] },
+    });
+    const res = await socle.app.inject({ method: 'GET', url: '/api/etat', headers: LOCAL });
+    expect(res.headers['content-security-policy']).toContain("img-src 'self' data: https://upload.wikimedia.org");
+    await socle.arreter();
+
+    const sans = await serveur();
+    const defaut = await sans.app.inject({ method: 'GET', url: '/api/etat', headers: LOCAL });
+    expect(defaut.headers['content-security-policy']).toContain("img-src 'self' data:;");
+    await sans.arreter();
+  });
+
   it('ne contiennent jamais un jeton', async () => {
     const socle = await serveur({ HOST: '0.0.0.0', PANEL_TOKEN: JETON_PANNEAU });
     const headers = { ...LOCAL, authorization: `Bearer ${JETON_PANNEAU}` };

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { AcceleratedClock, systemClock } from './clock.js';
 import { lancer, type Socle } from './demarrer.js';
+import type { CspSupplement } from './server.js';
 import type { ChatLine, ChatTransport, EtatAuth, FabriqueJeu, ProfilSimu, Retrait } from './types.js';
 
 /**
@@ -177,7 +178,7 @@ export function lireArguments(argv: readonly string[]): { joueurs: number; grain
  */
 export async function lancerSimu<V>(
   fabrique: FabriqueJeu<V>,
-  options: { argv?: readonly string[]; dossierPublic?: string } = {},
+  options: { argv?: readonly string[]; dossierPublic?: string; csp?: CspSupplement } = {},
 ): Promise<Socle<V>> {
   const { joueurs, graine, vitesse } = lireArguments(options.argv ?? process.argv.slice(2));
   const transport = new TransportSimule();
@@ -193,6 +194,7 @@ export async function lancerSimu<V>(
     simulation: true,
     ticMs: Math.max(50, 1000 / vitesse),
     ...(options.dossierPublic ? { dossierPublic: options.dossierPublic } : {}),
+    ...(options.csp ? { csp: options.csp } : {}),
   });
 
   const simulateur = new Simulateur({ transport, joueurs, graine, profil: socle.jeu.profilSimu, vue: () => socle.jeu.vue(clock.now()) });

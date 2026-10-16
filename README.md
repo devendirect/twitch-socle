@@ -7,7 +7,7 @@ un joueur sur demande, et simuler un chat pour développer et filmer sans stream
 
 ```
 npm install        # npm 8 : voir .npmrc (legacy-peer-deps)
-npm test           # 176 tests
+npm test           # 178 tests
 npm run typecheck
 npm run audit      # avant chaque direct : aucune alerte haute en production
 npm run simu       # le jeu factice avec 25 faux spectateurs
@@ -16,7 +16,7 @@ npm run simu       # le jeu factice avec 25 faux spectateurs
 ## Brancher un jeu
 
 Chaque jeu est un dépôt à part, qui dépend du socle à une version fixe :
-`"socle": "github:devendirect/twitch-socle#v0.2.0"`. Celui qui clone un jeu n'a que lui à cloner :
+`"socle": "github:devendirect/twitch-socle#v0.3.0"`. Celui qui clone un jeu n'a que lui à cloner :
 `npm install` télécharge le socle. Le jeu n'écrit que sa règle, ses textes et son écran.
 
 Pas de compilation : `tsx` lit les `.ts` du socle même installé dans `node_modules`, et
@@ -66,7 +66,10 @@ l'exemple complet le plus court.
 | `limites.creer({ max, fenetreMs })` | limite de fréquence par clé |
 | `clock`, `aleatoire` | horloge et tirage injectés : accélérés et reproductibles sous le simulateur |
 | `diffuser()` | rediffuse la vue aux overlays (appels regroupés) |
-| `store`, `logger` | base SQLite, journal |
+| `store`, `logger` | base SQLite, journal ; `store.lireReglage(cle)` / `ecrireReglage(cle, valeur)` pour un réglage du panneau qui survit au redémarrage (le thème…) |
+
+**Images d'ailleurs** : `lancer(jeu, { csp: { 'img-src': ['https://upload.wikimedia.org'] } })`
+ajoute une source à la politique de sécurité, nommément (jamais de script).
 
 **Ce que le socle fait seul** : les commandes `!points`, `!classement`, `!oubliemoi`,
 `!donnees`, `!aide` et leurs alias anglais ; `!jeu start|stop|skip` pour le streamer et

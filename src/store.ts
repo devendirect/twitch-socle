@@ -5,12 +5,15 @@ import path from 'node:path';
 /**
  * Persistance SQLite via `node:sqlite` (inspiré de `sncf/src/store/store.ts`).
  *
- * Deux tables, et le minimum (section 8 du brief) :
+ * Trois tables, et le minimum (section 8 du brief) :
  *
- *   players  `user-id`, login, pseudo affiché, points, victoires, manches
- *            jouées, date de dernière participation ;
- *   rounds   les manches : identifiant, jeu, début, fin, statut. Pour qu'un
- *            redémarrage en pleine manche se voie.
+ *   players   `user-id`, login, pseudo affiché, points, victoires, manches
+ *             jouées, date de dernière participation ;
+ *   rounds    les manches : identifiant, jeu, début, fin, statut. Pour qu'un
+ *             redémarrage en pleine manche se voie ;
+ *   reglages  ce que le streamer règle au panneau et qui doit survivre à un
+ *             redémarrage (le thème de l'overlay, par exemple). Clé, valeur :
+ *             le jeu valide ce qu'il y range. Jamais rien qui vienne du chat.
  *
  * **Aucun message du chat n'est enregistré.** Requêtes toujours préparées.
  */
@@ -39,6 +42,11 @@ CREATE TABLE IF NOT EXISTS rounds (
   started_at TEXT NOT NULL,
   ended_at   TEXT,
   status     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reglages (
+  cle    TEXT PRIMARY KEY,
+  valeur TEXT NOT NULL
 );
 `;
 
@@ -156,6 +164,22 @@ export class Store {
     return row ? (String(row['status']) as StatutManche) : null;
   }
 
+  // ─── Réglages ──────────────────────────────────────────────────────────────
+
+  /** Réglage enregistré, ou `null`. Le jeu revalide ce qu'il relit. */
+  lireReglage(cle: string): string | null {
+    const row = this.#db.prepare('SELECT valeur FROM reglages WHERE cle = ?').get(cle) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? String(row['valeur']) : null;
+  }
+
+  ecrireReglage(cle: string, valeur: string): void {
+    this.#db
+      .prepare('INSERT INTO reglages (cle, valeur) VALUES (?, ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur')
+      .run(cle, valeur);
+  }
+
   // ─── Entretien ─────────────────────────────────────────────────────────────
 
   /**
@@ -191,7 +215,7 @@ export class Store {
   /** Toutes les valeurs texte de la base : pour vérifier qu'aucun message n'y est. */
   allText(): string[] {
     const texts: string[] = [];
-    for (const table of ['players', 'rounds']) {
+    for (const table of ['players', 'rounds', 'reglages']) {
       for (const row of this.#db.prepare(`SELECT * FROM ${table}`).all() as Array<Record<string, unknown>>) {
         for (const value of Object.values(row)) if (typeof value === 'string') texts.push(value);
       }

@@ -11,7 +11,7 @@ import { messagesEn } from './i18n/messages.en.js';
 import { messagesFr } from './i18n/messages.fr.js';
 import { LimiteFrequence } from './limites.js';
 import { Scores } from './scores.js';
-import { creerServeur, valider, type DossierPublic } from './server.js';
+import { creerServeur, valider, type CspSupplement, type DossierPublic } from './server.js';
 import { SseHub } from './sse.js';
 import { Store } from './store.js';
 import type {
@@ -62,6 +62,12 @@ export interface DemarrageOptions {
   /** Cadence de `tic` ; `null` : les tests appellent `tic()` eux-mêmes. */
   ticMs?: number | null;
   sortie?: Partial<Omit<SortieOptions, 'transport'>>;
+  /**
+   * Sources ajoutées à la politique de sécurité, nommément (`CspSupplement`) :
+   * par exemple `{ 'img-src': ['https://upload.wikimedia.org'] }` pour des
+   * photos servies par Wikimedia. Jamais de script.
+   */
+  csp?: CspSupplement;
 }
 
 /** Ce que l'overlay reçoit. */
@@ -234,7 +240,12 @@ export async function demarrerJeu<V>(fabrique: FabriqueJeu<V>, options: Demarrag
     { racine: `${SOCLE_PUBLIC}socle`, prefixe: '/socle/' },
     { racine: `${SOCLE_PUBLIC}vendor`, prefixe: '/vendor/' },
   ];
-  const app = creerServeur({ dossiers, hotesAutorises: config.HOTES_AUTORISES, panelToken: config.PANEL_TOKEN });
+  const app = creerServeur({
+    dossiers,
+    hotesAutorises: config.HOTES_AUTORISES,
+    panelToken: config.PANEL_TOKEN,
+    ...(options.csp ? { csp: options.csp } : {}),
+  });
 
   app.get('/events', (_request, reply) => {
     // Fastify ne doit pas toucher à la réponse : le flux SSE reste ouvert.

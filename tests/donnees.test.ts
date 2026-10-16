@@ -103,6 +103,22 @@ describe('sauvegarde', () => {
   });
 });
 
+describe('réglages', () => {
+  it('survivent à la fermeture de la base, et une valeur remplace la précédente', () => {
+    const fichier = path.join(dossier(), 'jeu.db');
+    const store = new Store(fichier);
+    expect(store.lireReglage('theme')).toBeNull();
+    store.ecrireReglage('theme', 'plan');
+    store.ecrireReglage('theme', 'laiton');
+    store.close();
+
+    const relue = new Store(fichier);
+    expect(relue.lireReglage('theme')).toBe('laiton');
+    expect(relue.lireReglage('autre')).toBeNull();
+    relue.close();
+  });
+});
+
 describe('manches', () => {
   it('au démarrage, une manche restée ouverte passe « interrompue »', () => {
     const store = new Store();

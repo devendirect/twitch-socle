@@ -5,9 +5,6 @@ lire et écrire dans le chat (français et anglais), compter des points, diffuse
 vers un overlay OBS, garder les scores, protéger le serveur et le compte du bot, effacer
 un joueur sur demande, et simuler un chat pour développer et filmer sans stream.
 
-Le pourquoi de chaque choix est dans [`BRIEF.md`](BRIEF.md). Le code vient en grande
-partie du jeu SNCF (`../sncf`), copié et rendu générique ; le SNCF n'a pas été modifié.
-
 ```
 npm install        # npm 8 : voir .npmrc (legacy-peer-deps)
 npm test           # 173 tests

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { demarrerJeu } from '../src/demarrer.js';
 import { TransportSimule } from '../src/simu.js';
 import { chercherHtmlBrut } from '../src/verif.js';
+import { creerServeur, securityHeaders } from '../src/server.js';
 import { jeuFactice } from './jeu-factice.js';
 
 const JETON_PANNEAU = 'p'.repeat(40);
@@ -115,6 +116,28 @@ describe('mot de passe du panneau', () => {
     await socle.arreter();
   });
 
+  it('lectures publiques : la route déclarée, en lecture seulement', async () => {
+    const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
+    const app = creerServeur({
+      dossiers: [{ racine: publicDir, prefixe: '/' }],
+      panelToken: JETON_PANNEAU,
+      lecturesPubliques: ['/api/apparence'],
+    });
+    app.get('/api/apparence', async () => ({ couleur: 'bleu' }));
+    app.put('/api/apparence', async () => ({ ok: true }));
+    app.get('/api/apparence/:id', async () => ({ secret: true }));
+    app.get('/api/prive', async () => ({ secret: true }));
+
+    const get = (url: string) => app.inject({ method: 'GET', url, headers: LOCAL });
+    expect((await get('/api/apparence')).statusCode).toBe(200);
+    expect((await get('/api/apparence?x=1')).statusCode).toBe(200);
+    expect((await get('/api/apparence/1')).statusCode).toBe(401);
+    expect((await get('/api/prive')).statusCode).toBe(401);
+    const put = await app.inject({ method: 'PUT', url: '/api/apparence', headers: { ...POST_LOCAL, host: 'localhost:3001' }, payload: {} });
+    expect(put.statusCode).toBe(401);
+    await app.close();
+  });
+
   it('sans PANEL_TOKEN, une écoute ouverte au réseau refuse de démarrer', async () => {
     await expect(serveur({ HOST: '0.0.0.0' })).rejects.toThrow(/PANEL_TOKEN/);
   });
@@ -133,6 +156,29 @@ describe('réponses', () => {
       expect(res.headers['referrer-policy']).toBe('no-referrer');
     }
     await socle.arreter();
+  });
+
+  it('un jeu élargit la politique nommément, sans toucher aux scripts', async () => {
+    const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
+    const defaut = securityHeaders([publicDir])['content-security-policy']!;
+    expect(defaut).not.toContain('worker-src');
+    const csp = securityHeaders([publicDir], {
+      'img-src': ['https:'],
+      'connect-src': ['https://data.geopf.fr'],
+      'worker-src': ['blob:'],
+    })['content-security-policy']!;
+    expect(csp).toContain("img-src 'self' data: https:");
+    expect(csp).toContain("connect-src 'self' https://data.geopf.fr");
+    expect(csp).toContain("worker-src 'self' blob:");
+    expect(csp).not.toContain('child-src');
+    // Le reste ne bouge pas : script-src identique, aucune autre directive.
+    const scripts = (p: string) => p.split('; ').find((d) => d.startsWith('script-src'));
+    expect(scripts(csp)).toBe(scripts(defaut));
+
+    const app = creerServeur({ dossiers: [{ racine: publicDir, prefixe: '/' }], csp: { 'img-src': ['https:'] } });
+    const res = await app.inject({ method: 'GET', url: '/socle/dom.js', headers: LOCAL });
+    expect(res.headers['content-security-policy']).toContain("img-src 'self' data: https:");
+    await app.close();
   });
 
   it('ne contiennent jamais un jeton', async () => {

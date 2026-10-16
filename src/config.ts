@@ -41,61 +41,70 @@ const commaList = optionalText.transform((value) =>
     .filter(Boolean),
 );
 
-const ConfigSchema = z
-  .object({
-    PORT: integer(1, 65535, 3001),
-    HOST: optionalText.transform((value) => value ?? '127.0.0.1'),
-    /** Nom de chaîne Twitch : 3 à 25 lettres, chiffres ou `_`, `#` toléré. */
-    TWITCH_CHANNEL: optionalText.pipe(
-      z
-        .string()
-        .regex(/^#?[A-Za-z0-9_]{3,25}$/, { message: 'nom de chaîne Twitch attendu (3 à 25 lettres, chiffres ou _)' })
-        .transform((value) => value.replace(/^#/, '').toLowerCase())
-        .optional(),
-    ),
-    TWITCH_BOT_TOKEN: optionalText,
-    TWITCH_BOT_USERNAME: optionalText.transform((value) => value?.toLowerCase()),
-    LANGUE: optionalText.pipe(
-      z.enum(['fr', 'en'], { message: '« fr » ou « en » attendu' }).optional(),
-    ).transform((value) => value ?? 'fr'),
-    /** Comptes ignorés, en plus des bots courants. `@` et majuscules tolérés. */
-    BOTS_IGNORES: commaList.transform((logins) => [
-      ...new Set([...DEFAULT_IGNORED_BOTS, ...logins.map((login) => login.replace(/^@/, '').toLowerCase())]),
-    ]),
-    PANEL_TOKEN: optionalText,
-    /** Hôtes acceptés en plus de la machine locale. */
-    HOTES_AUTORISES: commaList,
-    /** Joueurs sans participation depuis ce nombre de mois : effacés au démarrage. */
-    PURGE_MOIS: integer(1, 120, 12),
-    DB_PATH: optionalText,
-  })
-  .superRefine((config, context) => {
-    if (config.PANEL_TOKEN !== undefined && config.PANEL_TOKEN.length < PANEL_TOKEN_MIN) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['PANEL_TOKEN'],
-        message: `au moins ${PANEL_TOKEN_MIN} caractères`,
-      });
-    }
-    // Ouvert au réseau sans mot de passe, n'importe qui sur le réseau pilote le
-    // jeu. Le SNCF se contentait d'un avertissement dans la bannière.
-    if (!LOCALES.has(config.HOST) && config.PANEL_TOKEN === undefined) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['HOST'],
-        message: `écoute ouverte au réseau : PANEL_TOKEN (au moins ${PANEL_TOKEN_MIN} caractères) est obligatoire`,
-      });
-    }
-    if (config.TWITCH_BOT_TOKEN !== undefined && config.TWITCH_BOT_USERNAME === undefined) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['TWITCH_BOT_USERNAME'],
-        message: 'obligatoire avec TWITCH_BOT_TOKEN (login du compte bot)',
-      });
-    }
-  });
+/**
+ * Briques pour les variables propres à un jeu (`extra` de `lireConfig`), avec
+ * les mêmes règles que celles du socle : vide = absente, entier borné, liste
+ * séparée par des virgules.
+ */
+export const champs = { texte: optionalText, entier: integer, liste: commaList };
+
+const champsSocle = (portParDefaut: number) => ({
+  PORT: integer(1, 65535, portParDefaut),
+  HOST: optionalText.transform((value) => value ?? '127.0.0.1'),
+  /** Nom de chaîne Twitch : 3 à 25 lettres, chiffres ou `_`, `#` toléré. */
+  TWITCH_CHANNEL: optionalText.pipe(
+    z
+      .string()
+      .regex(/^#?[A-Za-z0-9_]{3,25}$/, { message: 'nom de chaîne Twitch attendu (3 à 25 lettres, chiffres ou _)' })
+      .transform((value) => value.replace(/^#/, '').toLowerCase())
+      .optional(),
+  ),
+  TWITCH_BOT_TOKEN: optionalText,
+  TWITCH_BOT_USERNAME: optionalText.transform((value) => value?.toLowerCase()),
+  LANGUE: optionalText.pipe(
+    z.enum(['fr', 'en'], { message: '« fr » ou « en » attendu' }).optional(),
+  ).transform((value) => value ?? 'fr'),
+  /** Comptes ignorés, en plus des bots courants. `@` et majuscules tolérés. */
+  BOTS_IGNORES: commaList.transform((logins) => [
+    ...new Set([...DEFAULT_IGNORED_BOTS, ...logins.map((login) => login.replace(/^@/, '').toLowerCase())]),
+  ]),
+  PANEL_TOKEN: optionalText,
+  /** Hôtes acceptés en plus de la machine locale. */
+  HOTES_AUTORISES: commaList,
+  /** Joueurs sans participation depuis ce nombre de mois : effacés au démarrage. */
+  PURGE_MOIS: integer(1, 120, 12),
+  DB_PATH: optionalText,
+});
+
+const ConfigSchema = z.object(champsSocle(3001));
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+function verifier(config: Config, context: z.RefinementCtx): void {
+  if (config.PANEL_TOKEN !== undefined && config.PANEL_TOKEN.length < PANEL_TOKEN_MIN) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['PANEL_TOKEN'],
+      message: `au moins ${PANEL_TOKEN_MIN} caractères`,
+    });
+  }
+  // Ouvert au réseau sans mot de passe, n'importe qui sur le réseau pilote le
+  // jeu. Le SNCF se contentait d'un avertissement dans la bannière.
+  if (!LOCALES.has(config.HOST) && config.PANEL_TOKEN === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['HOST'],
+      message: `écoute ouverte au réseau : PANEL_TOKEN (au moins ${PANEL_TOKEN_MIN} caractères) est obligatoire`,
+    });
+  }
+  if (config.TWITCH_BOT_TOKEN !== undefined && config.TWITCH_BOT_USERNAME === undefined) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['TWITCH_BOT_USERNAME'],
+      message: 'obligatoire avec TWITCH_BOT_TOKEN (login du compte bot)',
+    });
+  }
+}
 
 export class ConfigError extends Error {
   constructor(readonly problems: string[]) {
@@ -103,18 +112,35 @@ export class ConfigError extends Error {
   }
 }
 
+export interface LireConfigOptions<E extends z.ZodRawShape> {
+  /** Port quand `PORT` est vide : 3001 par défaut (le SNCF garde 3000). */
+  portParDefaut?: number;
+  /** Variables propres au jeu, validées avec les autres (`champs`). */
+  extra?: E;
+  /** Variables du jeu à ne jamais recopier dans un message d'erreur. */
+  secrets?: readonly string[];
+}
+
 /**
  * Lit et valide l'environnement ; lève `ConfigError` avec **tous** les
- * problèmes d'un coup. Un secret n'est jamais recopié dans le message.
+ * problèmes d'un coup, ceux du jeu compris. Un secret n'est jamais recopié
+ * dans le message.
  */
-export function lireConfig(env: Record<string, string | undefined>): Config {
-  const result = ConfigSchema.safeParse(env);
-  if (result.success) return result.data;
+export function lireConfig<E extends z.ZodRawShape = Record<never, never>>(
+  env: Record<string, string | undefined>,
+  options: LireConfigOptions<E> = {},
+): Config & z.infer<z.ZodObject<E>> {
+  const schema = z
+    .object(champsSocle(options.portParDefaut ?? 3001))
+    .extend(options.extra ?? ({} as E))
+    .superRefine((config, context) => verifier(config as Config, context));
+  const secrets = new Set(['PANEL_TOKEN', 'TWITCH_BOT_TOKEN', ...(options.secrets ?? [])]);
+  const result = schema.safeParse(env);
+  if (result.success) return result.data as Config & z.infer<z.ZodObject<E>>;
   throw new ConfigError(
     result.error.issues.map((issue) => {
       const name = String(issue.path[0] ?? '?');
-      const secret = name === 'PANEL_TOKEN' || name === 'TWITCH_BOT_TOKEN';
-      const shown = secret ? '***' : JSON.stringify(env[name] ?? '');
+      const shown = secrets.has(name) ? '***' : JSON.stringify(env[name] ?? '');
       return `${name}=${shown} : ${issue.message}`;
     }),
   );

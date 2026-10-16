@@ -7,7 +7,7 @@ un joueur sur demande, et simuler un chat pour développer et filmer sans stream
 
 ```
 npm install        # npm 8 : voir .npmrc (legacy-peer-deps)
-npm test           # 173 tests
+npm test           # 176 tests
 npm run typecheck
 npm run audit      # avant chaque direct : aucune alerte haute en production
 npm run simu       # le jeu factice avec 25 faux spectateurs
@@ -16,7 +16,7 @@ npm run simu       # le jeu factice avec 25 faux spectateurs
 ## Brancher un jeu
 
 Chaque jeu est un dépôt à part, qui dépend du socle à une version fixe :
-`"socle": "github:devendirect/twitch-socle#v0.1.0"`. Celui qui clone un jeu n'a que lui à cloner :
+`"socle": "github:devendirect/twitch-socle#v0.2.0"`. Celui qui clone un jeu n'a que lui à cloner :
 `npm install` télécharge le socle. Le jeu n'écrit que sa règle, ses textes et son écran.
 
 Pas de compilation : `tsx` lit les `.ts` du socle même installé dans `node_modules`, et
@@ -98,6 +98,30 @@ expect(chercherHtmlBrut('public')).toEqual([]);
 
 **Bandeau « SIMULATION »** : `/api/etat` renvoie `simulation: true` sous le simulateur.
 Le panneau du jeu l'affiche ; l'overlay, jamais (prises de vue).
+
+## Garder son propre serveur (briques)
+
+Un jeu qui ne rentre pas dans `lancer` — le SNCF : ses propres routes, un registre de
+mises au lieu de points, une partie qui dure des heures et reprend au redémarrage —
+prend les briques que `lancer` assemble, et garde les mêmes protections tant qu'il fait
+tout passer par elles :
+
+| Brique | Rôle |
+|---|---|
+| `creerServeur({ dossiers, hotesAutorises, panelToken, csp, lecturesPubliques })` | Fastify avec toute la sécurité HTTP ; le jeu y ajoute ses routes |
+| `TwitchChatClient`, `Entree`, `Sortie` | le chat : connexion, messages reçus filtrés, messages envoyés bornés |
+| `analyser`, `indexer`, `COMMANDES_SOCLE`, `actionModeration` | commandes FR/EN dans une seule table d'alias |
+| `lireConfig(env, { portParDefaut, extra, secrets })` | le `.env` du socle plus les variables du jeu (`champs.texte`, `champs.entier`, `champs.liste`), validés ensemble |
+| `SseHub`, `RankedVote`, `AcceleratedClock`, `LimiteFrequence` | flux de l'overlay, vote, horloge, limites de réponse |
+| `TransportSimule`, `Simulateur`, `lireArguments` | le simulateur, avec un profil de jeu |
+
+**Politique de sécurité** : `csp` ajoute des sources, directive par directive
+(`img-src`, `connect-src`, `worker-src`…), jamais à `script-src`. Le SNCF y déclare
+les tuiles IGN, les photos Wikimedia et le worker de sa carte.
+
+**Lectures publiques** : avec `PANEL_TOKEN`, tout `/api/*` exige le mot de passe. Une
+route que la source OBS doit lire est déclarée dans `lecturesPubliques` : GET et HEAD
+seulement, comparée à la route déclarée (pas à l'URL tapée). Rien de secret n'y passe.
 
 ## Simulateur
 

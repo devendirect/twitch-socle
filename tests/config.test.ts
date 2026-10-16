@@ -1,7 +1,7 @@
 /** Variables d'environnement validées au démarrage (section 11 du brief). */
 
 import { describe, expect, it } from 'vitest';
-import { ConfigError, lireConfig } from '../src/config.js';
+import { ConfigError, champs, lireConfig } from '../src/config.js';
 import { DEFAULT_IGNORED_BOTS } from '../src/chat/irc.js';
 
 const JETON = 'x'.repeat(32);
@@ -57,6 +57,28 @@ describe('configuration', () => {
 
   it('exige le login du bot avec son jeton', () => {
     expect(() => lireConfig({ TWITCH_BOT_TOKEN: 'oauth:abc' })).toThrow(/TWITCH_BOT_USERNAME/);
+  });
+
+  it('variables propres au jeu : validées avec les autres, secrets masqués', () => {
+    const extra = { CLE_API: champs.texte, LIMITE: champs.entier(1, 10, 5) };
+    const config = lireConfig({ CLE_API: 'abc' }, { extra, portParDefaut: 3000 });
+    expect(config.CLE_API).toBe('abc');
+    expect(config.LIMITE).toBe(5);
+    expect(config.PORT).toBe(3000);
+    expect(lireConfig({}).PORT).toBe(3001);
+    try {
+      lireConfig(
+        { LIMITE: '99', PURGE_MOIS: 'y', CLE_API: 'secrète' },
+        { extra: { ...extra, CLE_API: champs.entier(1, 2, 1) }, secrets: ['CLE_API'] },
+      );
+      expect.unreachable();
+    } catch (error) {
+      const problems = (error as ConfigError).problems.join('\n');
+      expect((error as ConfigError).problems).toHaveLength(3);
+      expect(problems).toContain('LIMITE="99"');
+      expect(problems).toContain('CLE_API=***');
+      expect(problems).not.toContain('secrète');
+    }
   });
 
   it('liste tous les problèmes d’un coup', () => {

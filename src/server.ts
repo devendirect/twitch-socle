@@ -80,18 +80,34 @@ export function inlineScriptHashes(dir: string): string[] {
 }
 
 /**
- * En-têtes de sécurité, sur toutes les réponses. Aucun script externe, aucune
- * connexion sortante depuis les pages : tout est servi par le jeu.
+ * Sources ajoutées par un jeu à la politique de sécurité, directive par
+ * directive. Le SNCF en a besoin : tuiles IGN (`connect-src`), photos
+ * Wikimedia (`img-src`), worker de MapLibre (`worker-src blob:`), styles en
+ * ligne de son studio. Jamais `script-src` : un script externe ou
+ * `'unsafe-inline'` retirerait l'essentiel de la protection.
  */
-export function securityHeaders(publicDirs: readonly string[]): Record<string, string> {
+export type CspSupplement = Partial<
+  Record<'style-src' | 'img-src' | 'connect-src' | 'worker-src' | 'child-src' | 'font-src', readonly string[]>
+>;
+
+/**
+ * En-têtes de sécurité, sur toutes les réponses. Par défaut, aucun script
+ * externe, aucune connexion sortante depuis les pages : tout est servi par le
+ * jeu. Un jeu élargit une directive par `supplement`, nommément.
+ */
+export function securityHeaders(publicDirs: readonly string[], supplement: CspSupplement = {}): Record<string, string> {
   const hashes = publicDirs.flatMap((dir) => inlineScriptHashes(dir));
+  const directive = (nom: keyof CspSupplement, base: readonly string[]) =>
+    `${nom} ${[...new Set([...base, ...(supplement[nom] ?? [])])].join(' ')}`;
   const csp = [
     "default-src 'self'",
     `script-src 'self'${hashes.length ? ` ${[...new Set(hashes)].join(' ')}` : ''}`,
-    "style-src 'self'",
-    "img-src 'self' data:",
-    "connect-src 'self'",
-    "font-src 'self'",
+    directive('style-src', ["'self'"]),
+    directive('img-src', ["'self'", 'data:']),
+    directive('connect-src', ["'self'"]),
+    ...(supplement['worker-src'] ? [directive('worker-src', ["'self'"])] : []),
+    ...(supplement['child-src'] ? [directive('child-src', ["'self'"])] : []),
+    directive('font-src', ["'self'"]),
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",
@@ -137,6 +153,15 @@ export interface ServeurOptions {
   hotesAutorises?: readonly string[];
   /** Si défini, exigé en `Authorization: Bearer …` sur `/api/*`. */
   panelToken?: string | undefined;
+  /** Sources ajoutées à la politique de sécurité (`CspSupplement`). */
+  csp?: CspSupplement;
+  /**
+   * Routes `/api/*` lues par l'overlay, donc sans `PANEL_TOKEN` : en GET et
+   * HEAD seulement, et comparées à la route déclarée, pas à l'URL tapée. Le
+   * SNCF : `/api/overlay-config`, l'apparence que la source OBS doit lire.
+   * Rien de secret ne doit y passer.
+   */
+  lecturesPubliques?: readonly string[];
 }
 
 export function creerServeur(options: ServeurOptions): FastifyInstance {
@@ -185,11 +210,17 @@ export function creerServeur(options: ServeurOptions): FastifyInstance {
     }
   });
 
-  /** Le panneau, et lui seul, s'authentifie. L'overlay ne lit que `/events`. */
+  /**
+   * Le panneau, et lui seul, s'authentifie. L'overlay ne lit que `/events`,
+   * et les `lecturesPubliques` déclarées par le jeu.
+   */
   const token = options.panelToken;
+  const publiques = new Set(options.lecturesPubliques ?? []);
   if (token) {
     app.addHook('onRequest', async (request, reply) => {
       if (!request.url.startsWith('/api/')) return;
+      const lecture = request.method === 'GET' || request.method === 'HEAD';
+      if (lecture && publiques.has(request.routeOptions.url ?? '')) return;
       const header = request.headers.authorization ?? '';
       const recu = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : '';
       if (!recu || !memeJeton(recu, token)) {
@@ -204,7 +235,10 @@ export function creerServeur(options: ServeurOptions): FastifyInstance {
    */
   app.removeContentTypeParser('text/plain');
 
-  const headers = securityHeaders(options.dossiers.map((d) => d.racine));
+  const headers = securityHeaders(
+    options.dossiers.map((d) => d.racine),
+    options.csp,
+  );
   app.addHook('onSend', async (_request, reply, payload) => {
     reply.headers(headers);
     return payload;

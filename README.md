@@ -19,7 +19,7 @@ npm run simu       # le jeu factice avec 25 faux spectateurs
 ## Brancher un jeu
 
 Chaque jeu est un dépôt à part, qui dépend du socle à une version fixe :
-`"socle": "github:stanBPS/socle#v0.1.0"`. Celui qui clone un jeu n'a que lui à cloner :
+`"socle": "github:devendirect/twitch-socle#v0.1.0"`. Celui qui clone un jeu n'a que lui à cloner :
 `npm install` télécharge le socle. Le jeu n'écrit que sa règle, ses textes et son écran.
 
 Pas de compilation : `tsx` lit les `.ts` du socle même installé dans `node_modules`, et
